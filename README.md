@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a Twitter scraping tool designed to extract tweets, retweets, replies, and mutual followership information for specified users. The tool does not use Tweepy and relies on other Python libraries to perform its tasks.
+This project is a Twitter scraping tool designed to extract tweets, retweets, replies, and mutual followership information for specified users. The tool does not use Tweepy and relies on other Python libraries to perform its tasks such as **twscrape**.
 
 ## Project Structure
 
