@@ -23,7 +23,8 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
     df = pd.DataFrame(columns=[
         'tweet_id', 'user', 'created_at', 'post_text', 'lang', 'ViewCount',
         'quoteCount', 'likeCount', 'replyCount', 'retweetCount', 'bookmarkCount',
-        'is_retweet', 'is_quote', 'reply_to_id', 'reply_to_user', 'reply_to_text', 'is_mutual_followership'
+        'is_retweet', 'is_quote', 'is_reply', 'reply_to_id', 'reply_to_user', 
+        'reply_to_text', 'original_tweet_id', 'original_tweet_user', 'original_tweet_text', 'is_mutual_followership'
     ])
 
     api = API()
@@ -66,25 +67,30 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
         followers_ids = {follower.dict()['id'] for follower in followers}
         following_ids = {following.dict()['id'] for following in followings}
 
-        for tweet in tweets + retweets_and_replies:
+        for tweet in tweets:
             tweet_data = tweet.dict()
+            logging.debug(f"Tweet data: {tweet_data}")  # Detailed logging for debugging
+
             mutuality = 'Mutual' if tweet_data['user']['id'] in followers_ids and user_id in following_ids else 'Not Mutual'
 
-            is_retweet = tweet_data['retweetedTweet'] is not None
-            is_quote = tweet_data['quotedTweet'] is not None
-            is_reply = tweet_data.get('inReplyToStatus') is not None
+            is_retweet = 'retweetedTweet' in tweet_data and tweet_data['retweetedTweet'] is not None
+            is_quote = 'quotedTweet' in tweet_data and tweet_data['quotedTweet'] is not None
+            is_reply = 'inReplyToStatus' in tweet_data and tweet_data['inReplyToStatus'] is not None
 
-            if is_reply:
-                original_tweet_id = tweet_data.get('inReplyToStatus')
-                original_tweet = await api.tweet(original_tweet_id)
-                original_tweet_data = original_tweet.dict() if original_tweet else {}
-                reply_to_id = original_tweet_data.get('id')
-                reply_to_user = original_tweet_data.get('user', {}).get('username')
-                reply_to_text = original_tweet_data.get('rawContent')
+            reply_to_id = None
+            reply_to_user = None
+            reply_to_text = None
+
+            if is_retweet or is_quote:
+                original_tweet_user = tweet_data['retweetedTweet']['user']['username'] if is_retweet else tweet_data['quotedTweet']['user']['username']
+                original_tweet_text = tweet_data['retweetedTweet']['rawContent'] if is_retweet else tweet_data['quotedTweet']['rawContent']
+                original_tweet_id = tweet_data['retweetedTweet']['id'] if is_retweet else tweet_data['quotedTweet']['id']
             else:
-                reply_to_id = tweet_data.get('retweetedTweet', {}).get('user', {}).get('id') if is_retweet else (tweet_data.get('quotedTweet', {}).get('user', {}).get('id') if is_quote else None)
-                reply_to_user = tweet_data.get('retweetedTweet', {}).get('user', {}).get('username') if is_retweet else (tweet_data.get('quotedTweet', {}).get('user', {}).get('username') if is_quote else None)
-                reply_to_text = tweet_data.get('retweetedTweet', {}).get('rawContent') if is_retweet else (tweet_data.get('quotedTweet', {}).get('rawContent') if is_quote else None)
+                original_tweet_user = tweet_data['user']['username']
+                original_tweet_text = tweet_data['rawContent']
+                original_tweet_id = tweet_data['id']
+
+            logging.info(f"Tweet ID: {tweet_data['id']} - is_retweet: {is_retweet}, is_quote: {is_quote}, is_reply: {is_reply}")  # Log tweet types
 
             new_row = pd.DataFrame([{
                 'tweet_id': tweet_data['id'],
@@ -92,17 +98,92 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
                 'created_at': tweet_data['date'].strftime("%Y/%m/%d %H:%M:%S"),
                 'post_text': tweet_data['rawContent'],
                 'lang': tweet_data['lang'],
-                'ViewCount': tweet_data['viewCount'],
-                'quoteCount': tweet_data['quoteCount'],
-                'likeCount': tweet_data['likeCount'],
-                'replyCount': tweet_data['replyCount'],
-                'retweetCount': tweet_data['retweetCount'],
-                'bookmarkCount': tweet_data['bookmarkedCount'],
+                'ViewCount': tweet_data.get('viewCount'),
+                'quoteCount': tweet_data.get('quoteCount'),
+                'likeCount': tweet_data.get('likeCount'),
+                'replyCount': tweet_data.get('replyCount'),
+                'retweetCount': tweet_data.get('retweetCount'),
+                'bookmarkCount': tweet_data.get('bookmarkedCount'),
                 'is_retweet': is_retweet,
                 'is_quote': is_quote,
+                'is_reply': is_reply,
                 'reply_to_id': reply_to_id,
                 'reply_to_user': reply_to_user,
                 'reply_to_text': reply_to_text,
+                'original_tweet_id': original_tweet_id,
+                'original_tweet_user': original_tweet_user,
+                'original_tweet_text': original_tweet_text,
+                'is_mutual_followership': mutuality
+            }])
+
+            df = pd.concat([df, new_row], ignore_index=True)
+            logging.info(f"Processed tweet ID: {tweet_data['id']} for user: {user}")
+
+        for tweet in retweets_and_replies:
+            tweet_data = tweet.dict()
+            logging.debug(f"Tweet data: {tweet_data}")  # Detailed logging for debugging
+
+            mutuality = 'Mutual' if tweet_data['user']['id'] in followers_ids and user_id in following_ids else 'Not Mutual'
+
+            is_retweet = 'retweetedTweet' in tweet_data and tweet_data['retweetedTweet'] is not None
+            is_quote = 'quotedTweet' in tweet_data and tweet_data['quotedTweet'] is not None
+            is_reply = 'inReplyToStatus' in tweet_data and tweet_data['inReplyToStatus'] is not None
+
+            reply_to_id = None
+            reply_to_user = None
+            reply_to_text = None
+            original_tweet_id = None
+            original_tweet_user = None
+            original_tweet_text = None
+
+            if is_reply:
+                original_tweet_id = tweet_data['inReplyToStatus']
+                original_tweet = await api.tweet(original_tweet_id)
+                original_tweet_data = original_tweet.dict() if original_tweet else {}
+                reply_to_id = original_tweet_data.get('id')
+                reply_to_user = original_tweet_data.get('user', {}).get('username')
+                reply_to_text = original_tweet_data.get('rawContent')
+                original_tweet_user = tweet_data['user']['username']
+                original_tweet_text = tweet_data['rawContent']
+                original_tweet_id = tweet_data['id']
+            elif is_retweet:
+                original_tweet_user = tweet_data['retweetedTweet']['user']['username']
+                original_tweet_text = tweet_data['retweetedTweet']['rawContent']
+                original_tweet_id = tweet_data['retweetedTweet']['id']
+                reply_to_user = original_tweet_user
+                reply_to_text = original_tweet_text
+                reply_to_id = original_tweet_id
+            elif is_quote:
+                original_tweet_user = tweet_data['quotedTweet']['user']['username']
+                original_tweet_text = tweet_data['quotedTweet']['rawContent']
+                original_tweet_id = tweet_data['quotedTweet']['id']
+                reply_to_user = original_tweet_user
+                reply_to_text = original_tweet_text
+                reply_to_id = original_tweet_id
+
+            logging.info(f"Tweet ID: {tweet_data['id']} - is_retweet: {is_retweet}, is_quote: {is_quote}, is_reply: {is_reply}")  # Log tweet types
+
+            new_row = pd.DataFrame([{
+                'tweet_id': tweet_data['id'],
+                'user': tweet_data['user']['username'],
+                'created_at': tweet_data['date'].strftime("%Y/%m/%d %H:%M:%S"),
+                'post_text': tweet_data['rawContent'],
+                'lang': tweet_data['lang'],
+                'ViewCount': tweet_data.get('viewCount'),
+                'quoteCount': tweet_data.get('quoteCount'),
+                'likeCount': tweet_data.get('likeCount'),
+                'replyCount': tweet_data.get('replyCount'),
+                'retweetCount': tweet_data.get('retweetCount'),
+                'bookmarkCount': tweet_data.get('bookmarkedCount'),
+                'is_retweet': is_retweet,
+                'is_quote': is_quote,
+                'is_reply': is_reply,
+                'reply_to_id': reply_to_id,
+                'reply_to_user': reply_to_user,
+                'reply_to_text': reply_to_text,
+                'original_tweet_id': original_tweet_id,
+                'original_tweet_user': original_tweet_user,
+                'original_tweet_text': original_tweet_text,
                 'is_mutual_followership': mutuality
             }])
 
@@ -119,6 +200,9 @@ async def main(credentials_file, users_path, text_limit, path_to_save):
     df = df.sort_values(by=['user', 'created_at'])
     df.to_csv(path_to_save, index=False)
     logging.info(f"Data saved to {path_to_save}")
+    
+    # log out of all accounts 
+    api = API()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
