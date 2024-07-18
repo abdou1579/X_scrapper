@@ -53,12 +53,12 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
 
         try:
             tweets = await gather(api.user_tweets(user_id, limit=text_limit))
-            retweets = await gather(api.user_tweets_and_replies(user_id, limit=text_limit))
+            retweets_and_replies = await gather(api.user_tweets_and_replies(user_id, limit=text_limit))
         except Exception as e:
             logging.warning(f"Rate limit hit, waiting before retrying: {e}")
             time.sleep(900)  # wait for 15 minutes
             tweets = await gather(api.user_tweets(user_id, limit=text_limit))
-            retweets = await gather(api.user_tweets_and_replies(user_id, limit=text_limit))
+            retweets_and_replies = await gather(api.user_tweets_and_replies(user_id, limit=text_limit))
 
         followings = await gather(api.following(user_id, limit=text_limit))
         followers = await gather(api.followers(user_id, limit=text_limit))
@@ -66,16 +66,25 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
         followers_ids = {follower.dict()['id'] for follower in followers}
         following_ids = {following.dict()['id'] for following in followings}
 
-        for tweet in tweets:
+        for tweet in tweets + retweets_and_replies:
             tweet_data = tweet.dict()
             mutuality = 'Mutual' if tweet_data['user']['id'] in followers_ids and user_id in following_ids else 'Not Mutual'
 
             is_retweet = tweet_data['retweetedTweet'] is not None
             is_quote = tweet_data['quotedTweet'] is not None
+            is_reply = tweet_data.get('inReplyToStatus') is not None
 
-            reply_to_id = tweet_data['retweetedTweet']['user']['id'] if is_retweet else (tweet_data['quotedTweet']['user']['id'] if is_quote else None)
-            reply_to_user = tweet_data['retweetedTweet']['user']['username'] if is_retweet else (tweet_data['quotedTweet']['user']['username'] if is_quote else None)
-            reply_to_text = tweet_data['retweetedTweet']['rawContent'] if is_retweet else (tweet_data['quotedTweet']['rawContent'] if is_quote else None)
+            if is_reply:
+                original_tweet_id = tweet_data.get('inReplyToStatus')
+                original_tweet = await api.tweet(original_tweet_id)
+                original_tweet_data = original_tweet.dict() if original_tweet else {}
+                reply_to_id = original_tweet_data.get('id')
+                reply_to_user = original_tweet_data.get('user', {}).get('username')
+                reply_to_text = original_tweet_data.get('rawContent')
+            else:
+                reply_to_id = tweet_data.get('retweetedTweet', {}).get('user', {}).get('id') if is_retweet else (tweet_data.get('quotedTweet', {}).get('user', {}).get('id') if is_quote else None)
+                reply_to_user = tweet_data.get('retweetedTweet', {}).get('user', {}).get('username') if is_retweet else (tweet_data.get('quotedTweet', {}).get('user', {}).get('username') if is_quote else None)
+                reply_to_text = tweet_data.get('retweetedTweet', {}).get('rawContent') if is_retweet else (tweet_data.get('quotedTweet', {}).get('rawContent') if is_quote else None)
 
             new_row = pd.DataFrame([{
                 'tweet_id': tweet_data['id'],
@@ -96,7 +105,7 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
                 'reply_to_text': reply_to_text,
                 'is_mutual_followership': mutuality
             }])
-            
+
             df = pd.concat([df, new_row], ignore_index=True)
             logging.info(f"Processed tweet ID: {tweet_data['id']} for user: {user}")
 
