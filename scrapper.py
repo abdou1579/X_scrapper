@@ -72,6 +72,11 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
         for tweet in tweets:
             tweet_data = tweet.dict()
             logging.info(f"Tweet data: {tweet_data}")  # Detailed logging for debugging
+            
+            # Skip tweets from users not in the users_list
+            if tweet_data['user']['username'] not in users_list:
+                logging.info(f"Skipping tweet from user: {tweet_data['user']['username']}")
+                continue
 
             mutuality = 'Mutual' if tweet_data['user']['id'] in followers_ids and user_id in following_ids else 'Not Mutual'
 
@@ -133,10 +138,16 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
             df = pd.concat([df, new_row], ignore_index=True)
             logging.info(f"Processed tweet ID: {tweet_data['id']} for user: {user}")
 
-        for tweet in retweets_and_replies:
+        for tweet in retweets_and_replies: 
+                
             tweet_data = tweet.dict()
             logging.info(f"retweets_and_replies data: {tweet_data}")  # Detailed logging for debugging
 
+            # Skip tweets from users not in the users_list
+            if tweet_data['user']['username'] not in users_list:
+                logging.info(f"Skipping tweet from user: {tweet_data['user']['username']}")
+                continue
+            
             mutuality = 'Mutual' if tweet_data['user']['id'] in followers_ids and user_id in following_ids else 'Not Mutual'
 
             is_retweet = 'retweetedTweet' in tweet_data and tweet_data['retweetedTweet'] is not None
