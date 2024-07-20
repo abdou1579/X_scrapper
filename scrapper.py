@@ -1,3 +1,5 @@
+import pandas as pd
+import numpy as np
 import argparse
 import re
 import pandas as pd
@@ -80,15 +82,17 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
             reply_to_id = None
             reply_to_user = None
             reply_to_text = None
-
-            if is_retweet or is_quote:
-                original_tweet_user = tweet_data['retweetedTweet']['user']['username'] if is_retweet else tweet_data['quotedTweet']['user']['username']
-                original_tweet_text = tweet_data['retweetedTweet']['rawContent'] if is_retweet else tweet_data['quotedTweet']['rawContent']
-                original_tweet_id = tweet_data['retweetedTweet']['id'] if is_retweet else tweet_data['quotedTweet']['id']
+            if tweet_data['user']['id'] == user_id:
+                if is_retweet or is_quote:
+                    original_tweet_user = tweet_data['retweetedTweet']['user']['username'] if is_retweet else tweet_data['quotedTweet']['user']['username']
+                    original_tweet_text = tweet_data['retweetedTweet']['rawContent'] if is_retweet else tweet_data['quotedTweet']['rawContent']
+                    original_tweet_id = tweet_data['retweetedTweet']['id'] if is_retweet else tweet_data['quotedTweet']['id']
+                else:
+                    original_tweet_user = tweet_data['user']['username']
+                    original_tweet_text = tweet_data['rawContent']
+                    original_tweet_id = tweet_data['id']
             else:
-                original_tweet_user = tweet_data['user']['username']
-                original_tweet_text = tweet_data['rawContent']
-                original_tweet_id = tweet_data['id']
+                pass
 
             logging.info(f"Tweet ID: {tweet_data['id']} - is_retweet: {is_retweet}, is_quote: {is_quote}, is_reply: {is_reply}")  # Log tweet types
 
@@ -119,7 +123,8 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
             df = pd.concat([df, new_row], ignore_index=True)
             logging.info(f"Processed tweet ID: {tweet_data['id']} for user: {user}")
 
-        for tweet in retweets_and_replies:
+        for i, tweet in enumerate(retweets_and_replies):
+            
             tweet_data = tweet.dict()
             logging.debug(f"Tweet data: {tweet_data}")  # Detailed logging for debugging
 
@@ -136,30 +141,52 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
             original_tweet_user = None
             original_tweet_text = None
 
-            if is_reply:
-                original_tweet_id = tweet_data['inReplyToStatus']
-                original_tweet = await api.tweet(original_tweet_id)
-                original_tweet_data = original_tweet.dict() if original_tweet else {}
-                reply_to_id = original_tweet_data.get('id')
-                reply_to_user = original_tweet_data.get('user', {}).get('username')
-                reply_to_text = original_tweet_data.get('rawContent')
-                original_tweet_user = tweet_data['user']['username']
-                original_tweet_text = tweet_data['rawContent']
-                original_tweet_id = tweet_data['id']
-            elif is_retweet:
-                original_tweet_user = tweet_data['retweetedTweet']['user']['username']
-                original_tweet_text = tweet_data['retweetedTweet']['rawContent']
-                original_tweet_id = tweet_data['retweetedTweet']['id']
-                reply_to_user = original_tweet_user
-                reply_to_text = original_tweet_text
-                reply_to_id = original_tweet_id
-            elif is_quote:
-                original_tweet_user = tweet_data['quotedTweet']['user']['username']
-                original_tweet_text = tweet_data['quotedTweet']['rawContent']
-                original_tweet_id = tweet_data['quotedTweet']['id']
-                reply_to_user = original_tweet_user
-                reply_to_text = original_tweet_text
-                reply_to_id = original_tweet_id
+            if tweet_data['user']['id'] == user_id:
+                print(tweet_data['user']['id'])
+                if is_retweet:
+                    reply_to_id = tweet_data['retweetedTweet']['user']['id']
+                    reply_to_user = tweet_data['retweetedTweet']['user']['username']
+                    reply_to_text = tweet_data['rawContent']
+                    original_tweet_id = tweet_data['retweetedTweet']['id']
+                    original_tweet_user = tweet_data['retweetedTweet']['user']['id']
+                    original_tweet_text = tweet_data['retweetedTweet']['rawContent']
+                elif is_quote:
+                    reply_to_id = tweet_data['quotedTweet']['user']['id']
+                    reply_to_user = tweet_data['quotedTweet']['user']['username']
+                    reply_to_text = tweet_data['rawContent']
+                    original_tweet_id = tweet_data['quotedTweet']['id']
+                    original_tweet_user = tweet_data['quotedTweet']['user']['id']
+                    original_tweet_text = tweet_data['quotedTweet']['rawContent']
+                else:
+                    reply_to_id = tweet_data['user']['id']
+                    reply_to_user = tweet_data['user']['username']
+                    reply_to_text = tweet_data['rawContent']
+                    original_tweet_id = tweet_data['id']
+                    original_tweet_user = tweet_data['user']['id']
+                    original_tweet_text = tweet_data['rawContent']
+            else:
+
+                if is_retweet:
+                    reply_to_id = tweet_data['retweetedTweet']['user']['id']
+                    reply_to_user = tweet_data['retweetedTweet']['user']['username']
+                    reply_to_text = tweet_data['retweetedTweet']['rawContent']
+                    original_tweet_id = tweet_data['id']
+                    original_tweet_user = tweet_data['user']['id']
+                    original_tweet_text = tweet_data['rawContent']
+                elif is_quote:
+                    reply_to_id = tweet_data['retweetedTweet']['user']['id']
+                    reply_to_user = tweet_data['retweetedTweet']['user']['username']
+                    reply_to_text = tweet_data['quotedTweet']['user']['username']
+                    original_tweet_id = tweet_data['quotedTweet']['id']
+                    original_tweet_user = tweet_data['user']['id']
+                    original_tweet_text = tweet_data['rawContent']
+                else:
+                    reply_to_id = tweet_data['user']['id']
+                    reply_to_user = tweet_data['user']['username']
+                    reply_to_text = tweet_data
+                    original_tweet_id = tweet_data['user']['id']
+                    original_tweet_user = tweet_data['user']['username']
+                    original_tweet_text = tweet_data['rawContent']
 
             logging.info(f"Tweet ID: {tweet_data['id']} - is_retweet: {is_retweet}, is_quote: {is_quote}, is_reply: {is_reply}")  # Log tweet types
 
@@ -167,7 +194,7 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
                 'tweet_id': tweet_data['id'],
                 'user': tweet_data['user']['username'],
                 'created_at': tweet_data['date'].strftime("%Y/%m/%d %H:%M:%S"),
-                'post_text': tweet_data['rawContent'],
+                'post_text': tweet_data['rawContent'] if tweet_data['user']['username'] != user else None,
                 'lang': tweet_data['lang'],
                 'ViewCount': tweet_data.get('viewCount'),
                 'quoteCount': tweet_data.get('quoteCount'),
@@ -180,10 +207,10 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
                 'is_reply': is_reply,
                 'reply_to_id': reply_to_id,
                 'reply_to_user': reply_to_user,
-                'reply_to_text': reply_to_text,
+                'reply_to_text': original_tweet_text if tweet_data['user']['username'] != user else None,
                 'original_tweet_id': original_tweet_id,
                 'original_tweet_user': original_tweet_user,
-                'original_tweet_text': original_tweet_text,
+                'original_tweet_text': reply_to_text,
                 'is_mutual_followership': mutuality
             }])
 
@@ -192,25 +219,3 @@ async def scrap_tweets(credentials_file, users_path, text_limit):
 
     logging.info("Scraping process completed")
     return df
-
-async def main(credentials_file, users_path, text_limit, path_to_save):
-    logging.info("Main function started")
-    df = await scrap_tweets(credentials_file, users_path, int(text_limit))
-    df['created_at'] = pd.to_datetime(df['created_at'])
-    df = df.sort_values(by=['user', 'created_at'])
-    df.to_csv(path_to_save, index=False)
-    logging.info(f"Data saved to {path_to_save}")
-    
-    # log out of all accounts 
-    api = API()
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('credentials', metavar='FILE', type=str, help='Path to the credentials text file')
-    parser.add_argument('users_path', metavar='FILE', type=str, help='Path to the users list file')
-    parser.add_argument('text_limit', metavar='LIMIT', type=int, help='Text limit')
-    parser.add_argument('path_to_save', metavar='FILE', type=str, help='Path to save the generated scraping file')
-
-    args = parser.parse_args()
-
-    asyncio.run(main(args.credentials, args.users_path, args.text_limit, args.path_to_save))
